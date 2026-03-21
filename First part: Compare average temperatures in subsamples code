@@ -1,0 +1,253 @@
+# ==============================================================================
+# Part 1: Comparison of Average Temperatures in Different Parts of the Sample
+# ==============================================================================
+
+annual <- read.csv2("C:/Users/eva22/OneDrive/Documenten/Eva/MU/2-4/MS/The data/AnnualTemp.csv",
+                    header = TRUE)
+
+de_bilt    <- annual$De.Bilt
+eelde      <- annual$Eelde
+maastricht <- annual$Maastricht
+years      <- annual$Date
+n          <- length(maastricht)
+
+# ==============================================================================
+# Helper functions
+# ==============================================================================
+
+sample_mean <- function(x) { sum(x) / length(x) }
+
+sample_var <- function(x) {
+  xbar <- sample_mean(x)
+  sum((x - xbar)^2) / (length(x) - 1)
+}
+
+sample_sd  <- function(x) { sqrt(sample_var(x)) }
+sample_se  <- function(x) { sample_sd(x) / sqrt(length(x)) }
+
+ci_mean <- function(x, alpha = 0.05) {
+  n_x    <- length(x)
+  xbar   <- sample_mean(x)
+  se     <- sample_se(x)
+  df     <- n_x - 1
+  t_crit <- qt(1 - alpha / 2, df)
+  lower  <- xbar - t_crit * se
+  upper  <- xbar + t_crit * se
+  list(mean = xbar, lower = lower, upper = upper, se = se,
+       df = df, t_crit = t_crit, n = n_x)
+}
+
+two_sample_test <- function(x1, x2, alpha = 0.05) {
+  n1 <- length(x1)
+  n2 <- length(x2)
+  m1 <- sample_mean(x1)
+  m2 <- sample_mean(x2)
+  v1 <- sample_var(x1)
+  v2 <- sample_var(x2)
+  
+  diff    <- m1 - m2
+  se_diff <- sqrt(v1 / n1 + v2 / n2)
+  t_stat  <- diff / se_diff
+  z_crit  <- qnorm(1 - alpha / 2)
+  lower   <- diff - z_crit * se_diff
+  upper   <- diff + z_crit * se_diff
+  
+  list(diff = diff, se = se_diff, t_stat = t_stat,
+       lower = lower, upper = upper)
+}
+
+# ==============================================================================
+# (1) Overall confidence interval for the mean (full sample)
+# ==============================================================================
+
+for (loc_name in c("Maastricht", "De Bilt", "Eelde")) {
+  x  <- switch(loc_name,
+               "Maastricht" = maastricht,
+               "De Bilt"    = de_bilt,
+               "Eelde"      = eelde)
+  ci <- ci_mean(x)
+  cat(sprintf("  %s: Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+              loc_name, ci$mean, ci$lower, ci$upper, ci$n))
+}
+
+# ==============================================================================
+# (2) Two-part split — test for equality of means
+# ==============================================================================
+
+split_year <- 1965
+
+run_two_part_test <- function(x, name, split_yr) {
+  idx_early <- which(years <= split_yr)
+  idx_late  <- which(years > split_yr)
+  early <- x[idx_early]
+  late  <- x[idx_late]
+  
+  ci_e <- ci_mean(early)
+  ci_l <- ci_mean(late)
+  test <- two_sample_test(late, early)
+  
+  cat(sprintf("  --- %s ---\n", name))
+  cat(sprintf("  Early (%d-%d): Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+              min(years[idx_early]), split_yr,
+              ci_e$mean, ci_e$lower, ci_e$upper, ci_e$n))
+  cat(sprintf("  Late  (%d-%d): Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+              split_yr + 1, max(years),
+              ci_l$mean, ci_l$lower, ci_l$upper, ci_l$n))
+  cat(sprintf("  Diff = %.4f, |T| = %.4f, 95%% CI for diff: [%.4f, %.4f]\n\n",
+              test$diff, abs(test$t_stat), test$lower, test$upper))
+}
+
+run_two_part_test(maastricht, "Maastricht", split_year)
+run_two_part_test(de_bilt, "De Bilt", split_year)
+run_two_part_test(eelde, "Eelde", split_year)
+
+# ==============================================================================
+# (3) Five-period split with consecutive comparisons
+# ==============================================================================
+cuts5  <- c(1907, 1931, 1955, 1979, 2003, 2024)
+n_per  <- length(cuts5) - 1
+
+run_five_part <- function(x, name) {
+  cat(sprintf("  --- %s ---\n", name))
+  periods <- list()
+  pnames  <- character()
+  
+  for (i in 1:n_per) {
+    if (i < n_per) {
+      idx <- which(years >= cuts5[i] & years < cuts5[i + 1])
+    } else {
+      idx <- which(years >= cuts5[i] & years <= cuts5[i + 1])
+    }
+    periods[[i]] <- x[idx]
+    pnames[i] <- sprintf("%d-%d", cuts5[i], ifelse(i < n_per, cuts5[i + 1] - 1, cuts5[i + 1]))
+    
+    ci <- ci_mean(periods[[i]])
+    cat(sprintf("  %s: Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+                pnames[i], ci$mean, ci$lower, ci$upper, ci$n))
+  }
+  
+  cat("\n  Consecutive tests:\n")
+  for (i in 1:(n_per - 1)) {
+    test <- two_sample_test(periods[[i + 1]], periods[[i]])
+    cat(sprintf("  %s vs %s: Diff = %.4f, |T| = %.4f, 95%% CI: [%.4f, %.4f]\n",
+                pnames[i + 1], pnames[i], test$diff,
+                abs(test$t_stat), test$lower, test$upper))
+  }}
+
+run_five_part(maastricht, "Maastricht")
+run_five_part(de_bilt, "De Bilt")
+run_five_part(eelde, "Eelde")
+
+# ==============================================================================
+# (4) Decade-based confidence intervals 
+# ==============================================================================
+
+decade_start <- seq(1907, 2017, by = 10)
+
+run_decade_ci <- function(x, name) {
+  cat(sprintf("  --- %s ---\n", name))
+  for (start in decade_start) {
+    end <- min(start + 9, 2024)
+    idx <- which(years >= start & years <= end)
+    ci  <- ci_mean(x[idx])
+    cat(sprintf("  %d-%d: Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+                start, end, ci$mean, ci$lower, ci$upper, ci$n))
+  }}
+
+run_decade_ci(maastricht, "Maastricht")
+run_decade_ci(de_bilt, "De Bilt")
+run_decade_ci(eelde, "Eelde")
+
+# ==============================================================================
+# (5) Rolling 30-year window
+# ==============================================================================
+
+rolling_ci <- function(x, yrs, w) {
+  n_windows <- length(x) - w + 1
+  mid   <- numeric(n_windows)
+  means <- numeric(n_windows)
+  lo    <- numeric(n_windows)
+  hi    <- numeric(n_windows)
+  for (i in 1:n_windows) {
+    xi       <- x[i:(i + w - 1)]
+    ci       <- ci_mean(xi)
+    mid[i]   <- yrs[i] + (w - 1) / 2
+    means[i] <- ci$mean
+    lo[i]    <- ci$lower
+    hi[i]    <- ci$upper
+  }
+  data.frame(mid = mid, mean = means, lower = lo, upper = hi)
+}
+
+roll_maa <- rolling_ci(maastricht, years, 30)
+roll_db  <- rolling_ci(de_bilt, years, 30)
+roll_ee  <- rolling_ci(eelde, years, 30)
+
+cat("  Maastricht — Selected 30-year windows:\n")
+print_idx <- round(seq(1, nrow(roll_maa), length.out = 6))
+for (i in print_idx) {
+  start_yr <- years[i]
+  end_yr   <- years[i + 30 - 1]
+  cat(sprintf("  %d-%d: Mean = %.4f, 95%% CI: [%.4f, %.4f]\n",
+              start_yr, end_yr, roll_maa$mean[i], roll_maa$lower[i], roll_maa$upper[i]))
+}
+
+# ==============================================================================
+# FIGURES
+# ==============================================================================
+
+# --- Figure 1: Time series of all three stations ---
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 2, 1))
+plot(years, maastricht, type = "l", col = "red", lwd = 1.5,
+     ylim = c(7, 13), xlab = "Year", ylab = "Temperature (°C)",
+     main = "Annual Mean Temperatures (1907-2024)")
+lines(years, de_bilt, col = "blue", lwd = 1.5)
+lines(years, eelde, col = "darkgreen", lwd = 1.5)
+abline(h = sample_mean(maastricht), col = "red", lty = 2)
+abline(h = sample_mean(de_bilt), col = "blue", lty = 2)
+abline(h = sample_mean(eelde), col = "darkgreen", lty = 2)
+legend("topleft",
+       legend = c("Maastricht", "De Bilt", "Eelde"),
+       col = c("red", "blue", "darkgreen"),
+       lwd = 1.5, cex = 0.8, bty = "n")
+
+# --- Figure 2: Decade CIs (Maastricht) ---
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 2, 1))
+plot(NULL, xlim = range(years), ylim = c(8, 12),
+     xlab = "Midpoint of Decade", ylab = "Temperature (°C)",
+     main = "Decade Means with 95% CIs (Maastricht)")
+lines(years, maastricht, col = adjustcolor("red", 0.15))
+for (i in seq_along(decade_start)) {
+  start <- decade_start[i]
+  end   <- min(start + 9, 2024)
+  idx   <- which(years >= start & years <= end)
+  ci    <- ci_mean(maastricht[idx])
+  mid   <- (start + end) / 2
+  points(mid, ci$mean, pch = 19, col = "red", cex = 1.3)
+  arrows(mid, ci$lower, mid, ci$upper,
+         angle = 90, code = 3, length = 0.06, col = "red", lwd = 2)
+}
+abline(h = sample_mean(maastricht), col = "gray50", lty = 3)
+legend("topleft", c("Decade mean +/- 95% CI", "Overall mean"),
+       col = c("red", "gray50"), pch = c(19, NA), lty = c(NA, 3),
+       lwd = c(2, 1), cex = 0.8, bty = "n")
+
+# --- Figure 3: Rolling 30-year CI (Maastricht) ---
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 2, 1))
+plot(NULL,
+     xlim = range(years),
+     ylim = c(8, 12),
+     xlab = "Midpoint of 30-Year Window",
+     ylab = "Temperature (°C)",
+     main = "Rolling 30-Year Mean with 95% CI (Maastricht)")
+lines(years, maastricht, col = adjustcolor("red", 0.15))
+polygon(c(roll_maa$mid, rev(roll_maa$mid)),
+        c(roll_maa$lower, rev(roll_maa$upper)),
+        col = adjustcolor("red", 0.15), border = NA)
+lines(roll_maa$mid, roll_maa$mean, col = "red", lwd = 2)
+abline(h = sample_mean(maastricht), col = "gray50", lty = 3)
+legend("topleft",
+       legend = c("30-year mean", "95% CI band", "Overall mean"),
+       col = c("red", adjustcolor("red", 0.3), "gray50"),
+       lwd = c(2, 8, 1), lty = c(1, 1, 3),
+       cex = 0.8, bty = "n")
