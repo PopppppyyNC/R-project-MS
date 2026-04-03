@@ -1,13 +1,15 @@
-# ==============================================================================
-# Part 3: Bootstrap
-# ==============================================================================
-# NOTE: This code assumes Part 1 and Part 2 have already been run, so the
-# following objects are available in the environment:
+# This code assumes Part 1 and Part 2 have already been run, so the following objects are available in the environment:
 #   years, maastricht (Y), n, aLS, bLS, eps_hat, S2, se_bLS, t_stat
 #   aLS_part, bLS_part, eps_part, S2_part, se_bLS_part, t_stat_part
 #   breakpoint (= 1975)
-# If running standalone, load data and re-estimate first (see bottom of file).
 # ==============================================================================
+# STANDALONE BLOCK — run this first if Parts 1 & 2 are not loaded
+# ==============================================================================
+# annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
+# years      <- annual$Date
+# maastricht <- annual$Maastricht
+# n          <- length(maastricht)
+# breakpoint <- 1975
 
 set.seed(2107)
 B <- 9999   # number of bootstrap replications
@@ -242,11 +244,3 @@ legend("topleft",
        col = c("red", "darkgreen", "grey40"), lwd = c(2, 1.5, 1),
        lty = c(1, 2, 3), cex = 0.75, bty = "n")
 
-# ==============================================================================
-# STANDALONE BLOCK — run this first if Parts 1 & 2 are not loaded
-# ==============================================================================
-# annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
-# years      <- annual$Date
-# maastricht <- annual$Maastricht
-# n          <- length(maastricht)
-# breakpoint <- 1975
