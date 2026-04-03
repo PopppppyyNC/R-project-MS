@@ -2,9 +2,8 @@
 #   years, maastricht (Y), n, aLS, bLS, eps_hat, S2, se_bLS, t_stat
 #   aLS_part, bLS_part, eps_part, S2_part, se_bLS_part, t_stat_part
 #   breakpoint (= 1975)
-# ==============================================================================
-# STANDALONE BLOCK — run this first if Parts 1 & 2 are not loaded
-# ==============================================================================
+
+# If not, run:
 # annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
 # years      <- annual$Date
 # maastricht <- annual$Maastricht
