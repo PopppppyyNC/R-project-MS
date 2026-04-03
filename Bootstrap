@@ -1,8 +1,4 @@
-# This code assumes Part 1 and Part 2 have already been run, so the following objects are available in the environment:
-#   years, maastricht (Y), n, aLS, bLS, eps_hat, S2, se_bLS, t_stat
-#   aLS_part, bLS_part, eps_part, S2_part, se_bLS_part, t_stat_part
-#   breakpoint (= 1975)
-
+# This code assumes Part 1 and Part 2 have already been run
 # If not, run:
 # annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
 # years      <- annual$Date
