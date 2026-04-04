@@ -1,4 +1,7 @@
-# Only run if parts 1 and 2 haven't been run before:
+# ==============================================================================
+# Part 3: Bootstrap
+# Assumes Parts 1 & 2 have been run. If not, uncomment the block below.
+# ==============================================================================
 # annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
 # years      <- annual$Date
 # maastricht <- annual$Maastricht
@@ -11,7 +14,10 @@ B <- 499   # number of bootstrap replications
 sample_mean <- function(x) sum(x) / length(x)
 sample_var  <- function(x) sum((x - sample_mean(x))^2) / (length(x) - 1)
 
+# ==============================================================================
 # Helper: OLS fit (same formulas as Part 2, wrapped into a function)
+# ==============================================================================
+
 ols_fit <- function(x, Y) {
   n_r  <- length(Y)
   xbar <- sample_mean(x)
@@ -26,8 +32,10 @@ ols_fit <- function(x, Y) {
   list(b = b, a = a, se_b = se_b, t = b / se_b)
 }
 
+# ==============================================================================
 # 3.1 Bootstrap for the full-sample OLS slope
 #     H0: beta <= 0  vs  H1: beta > 0
+# ==============================================================================
 
 # Compute observed t-statistic on real data
 fit_full <- ols_fit(years, maastricht)
@@ -66,8 +74,10 @@ cat(sprintf("  Normal-theory 95%% CI:        [%.6f, %.6f]\n",
 cat(sprintf("  Decision: %s\n\n",
             ifelse(Q_full > c.alpha.star_full, "REJECT H0", "Do NOT reject H0")))
 
+# ==============================================================================
 # 3.2 Bootstrap for the partial-trend OLS slope (breakpoint = 1975)
 #     H0: beta <= 0  vs  H1: beta > 0
+# ==============================================================================
 
 x_part   <- ifelse(years >= breakpoint, years - breakpoint, 0)
 fit_part <- ols_fit(x_part, maastricht)
@@ -102,7 +112,9 @@ cat(sprintf("  Normal-theory 95%% CI:        [%.6f, %.6f]\n",
 cat(sprintf("  Decision: %s\n\n",
             ifelse(Q_part > c.alpha.star_part, "REJECT H0", "Do NOT reject H0")))
 
+# ==============================================================================
 # 3.3 Figures — bootstrap distributions with observed Q and critical value
+# ==============================================================================
 
 # --- Figure A: Full-sample ---
 par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
