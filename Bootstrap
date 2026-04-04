@@ -1,5 +1,4 @@
-# This code assumes Part 1 and Part 2 have already been run
-# If not, run:
+# Only run if parts 1 and 2 haven't been run before:
 # annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
 # years      <- annual$Date
 # maastricht <- annual$Maastricht
@@ -7,32 +6,12 @@
 # breakpoint <- 1975
 
 set.seed(2107)
-B <- 9999   # number of bootstrap replications
-
-# ==============================================================================
-# Helper (already defined in Part 1, redefined here for standalone safety)
-# ==============================================================================
+B <- 499   # number of bootstrap replications
 
 sample_mean <- function(x) sum(x) / length(x)
 sample_var  <- function(x) sum((x - sample_mean(x))^2) / (length(x) - 1)
 
-# ==============================================================================
-# 3.1 Bootstrap for the FULL-SAMPLE OLS slope
-#     H0: beta <= 0  vs  H1: beta > 0
-#
-# Approach: residual (pairs) bootstrap on regression
-#   - Resample pairs (x_i, Y_i) with replacement
-#   - Re-estimate beta on each bootstrap sample
-#   - Construct the bootstrap t-statistic centred at bLS (not 0),
-#     because under the bootstrap world the "true" beta IS bLS
-# ==============================================================================
-
-cat("=== 3.1 Bootstrap: Full-Sample OLS (Maastricht) ===\n")
-
-# --- Objects needed ---
-x_full  <- years
-Y_full  <- maastricht
-
+# Helper: OLS fit (same formulas as Part 2, wrapped into a function)
 ols_fit <- function(x, Y) {
   n_r  <- length(Y)
   xbar <- sample_mean(x)
@@ -44,198 +23,116 @@ ols_fit <- function(x, Y) {
   eps  <- Y - a - b * x
   S2   <- sum(eps^2) / (n_r - 2)
   se_b <- sqrt(S2 / Sxx)
-  list(a = a, b = b, eps = eps, S2 = S2, se_b = se_b, t = b / se_b)
+  list(b = b, a = a, se_b = se_b, t = b / se_b)
 }
 
-fit_full <- ols_fit(x_full, Y_full)
+# 3.1 Bootstrap for the full-sample OLS slope
+#     H0: beta <= 0  vs  H1: beta > 0
 
-# Bootstrap loop — pairs bootstrap
-t_boot_full <- numeric(B)
-b_boot_full <- numeric(B)
+# Compute observed t-statistic on real data
+fit_full <- ols_fit(years, maastricht)
+Q_full   <- fit_full$t                        # observed t-statistic
 
-for (i in 1:B) {
-  idx          <- sample.int(n, size = n, replace = TRUE)
-  fit_b        <- ols_fit(x_full[idx], Y_full[idx])
-  # Bootstrap t-statistic: centre at bLS (the "truth" in bootstrap world)
-  t_boot_full[i] <- (fit_b$b - fit_full$b) / fit_b$se_b
-  b_boot_full[i] <- fit_b$b
+alpha <- 0.05
+
+Q.star_full <- rep(NA, B)                     # store bootstrap t-statistics
+
+for (b in 1:B) {
+  J             <- sample.int(n, size = n, replace = TRUE)   # draw bootstrap indices
+  x.star        <- years[J]                                  # bootstrap x
+  Y.star        <- maastricht[J]                             # bootstrap Y
+  fit.star      <- ols_fit(x.star, Y.star)                   # re-estimate OLS
+  # Bootstrap t-statistic: centre at bLS (the "true" beta in bootstrap world)
+  Q.star_full[b] <- (fit.star$b - fit_full$b) / fit.star$se_b
 }
 
-# Bootstrap p-value (one-sided: H1: beta > 0)
-p_boot_full <- mean(t_boot_full > fit_full$t)
+c.alpha.star_full <- quantile(Q.star_full, probs = 1 - alpha)  # bootstrap critical value
+p.value_full      <- mean(Q.star_full > Q_full)                # bootstrap p-value
 
-# Bootstrap 95% CI for beta using percentile method
-ci_boot_full_pct <- quantile(b_boot_full, probs = c(0.025, 0.975))
+# Bootstrap CI (pivot method)
+q.lo_full <- quantile(Q.star_full, probs = alpha / 2)
+q.hi_full <- quantile(Q.star_full, probs = 1 - alpha / 2)
+ci.lo_full <- fit_full$b - q.hi_full * fit_full$se_b
+ci.hi_full <- fit_full$b - q.lo_full * fit_full$se_b
 
-# Bootstrap 95% CI using pivot (studentised) method
-# beta_hat - q_{0.975} * se  to  beta_hat - q_{0.025} * se
-q_boot_full <- quantile(t_boot_full, probs = c(0.025, 0.975))
-ci_boot_full_pivot <- c(fit_full$b - q_boot_full[2] * fit_full$se_b,
-                        fit_full$b - q_boot_full[1] * fit_full$se_b)
-
-cat(sprintf("  OLS estimate:       bLS = %.6f,  SE = %.6f,  t = %.4f\n",
-            fit_full$b, fit_full$se_b, fit_full$t))
-cat(sprintf("  Normal-theory CI:   [%.6f, %.6f]\n",
+cat("=== 3.1 Bootstrap: Full-Sample OLS ===\n")
+cat(sprintf("  Observed t-statistic Q        = %.4f\n", Q_full))
+cat(sprintf("  Bootstrap critical value c*   = %.4f\n", c.alpha.star_full))
+cat(sprintf("  Bootstrap p-value             = %.4f\n", p.value_full))
+cat(sprintf("  Bootstrap 95%% CI for beta:   [%.6f, %.6f]\n", ci.lo_full, ci.hi_full))
+cat(sprintf("  Normal-theory 95%% CI:        [%.6f, %.6f]\n",
             fit_full$b - qt(0.975, n - 2) * fit_full$se_b,
             fit_full$b + qt(0.975, n - 2) * fit_full$se_b))
-cat(sprintf("  Bootstrap CI (pct): [%.6f, %.6f]\n",
-            ci_boot_full_pct[1], ci_boot_full_pct[2]))
-cat(sprintf("  Bootstrap CI (pvt): [%.6f, %.6f]\n",
-            ci_boot_full_pivot[1], ci_boot_full_pivot[2]))
-cat(sprintf("  Normal p-value (1s): %.6f\n", 1 - pt(fit_full$t, df = n - 2)))
-cat(sprintf("  Bootstrap p-value:   %.6f\n", p_boot_full))
-cat(sprintf("  Decision (alpha=0.05): %s\n\n",
-            ifelse(p_boot_full < 0.05, "REJECT H0", "Do NOT reject H0")))
+cat(sprintf("  Decision: %s\n\n",
+            ifelse(Q_full > c.alpha.star_full, "REJECT H0", "Do NOT reject H0")))
 
-# ==============================================================================
-# 3.2 Bootstrap for the PARTIAL-TREND OLS slope (breakpoint = 1975)
-#     Same H0: beta <= 0  vs  H1: beta > 0
-# ==============================================================================
+# 3.2 Bootstrap for the partial-trend OLS slope (breakpoint = 1975)
+#     H0: beta <= 0  vs  H1: beta > 0
 
-cat("=== 3.2 Bootstrap: Partial-Trend OLS (breakpoint =", breakpoint, ") ===\n")
+x_part   <- ifelse(years >= breakpoint, years - breakpoint, 0)
+fit_part <- ols_fit(x_part, maastricht)
+Q_part   <- fit_part$t
 
-ols_fit_partial <- function(years_v, Y, bp) {
-  x_bp <- ifelse(years_v >= bp, years_v - bp, 0)
-  ols_fit(x_bp, Y)
+Q.star_part <- rep(NA, B)
+
+for (b in 1:B) {
+  J              <- sample.int(n, size = n, replace = TRUE)
+  x.star         <- x_part[J]
+  Y.star         <- maastricht[J]
+  fit.star       <- ols_fit(x.star, Y.star)
+  Q.star_part[b] <- (fit.star$b - fit_part$b) / fit.star$se_b
 }
 
-fit_part <- ols_fit_partial(years, maastricht, breakpoint)
+c.alpha.star_part <- quantile(Q.star_part, probs = 1 - alpha)
+p.value_part      <- mean(Q.star_part > Q_part)
 
-t_boot_part <- numeric(B)
-b_boot_part <- numeric(B)
+q.lo_part <- quantile(Q.star_part, probs = alpha / 2)
+q.hi_part <- quantile(Q.star_part, probs = 1 - alpha / 2)
+ci.lo_part <- fit_part$b - q.hi_part * fit_part$se_b
+ci.hi_part <- fit_part$b - q.lo_part * fit_part$se_b
 
-for (i in 1:B) {
-  idx    <- sample.int(n, size = n, replace = TRUE)
-  yrs_b  <- years[idx]
-  Y_b    <- maastricht[idx]
-  fit_b  <- ols_fit_partial(yrs_b, Y_b, breakpoint)
-  t_boot_part[i] <- (fit_b$b - fit_part$b) / fit_b$se_b
-  b_boot_part[i] <- fit_b$b
-}
-
-p_boot_part         <- mean(t_boot_part > fit_part$t)
-ci_boot_part_pct    <- quantile(b_boot_part, probs = c(0.025, 0.975))
-q_boot_part         <- quantile(t_boot_part, probs = c(0.025, 0.975))
-ci_boot_part_pivot  <- c(fit_part$b - q_boot_part[2] * fit_part$se_b,
-                         fit_part$b - q_boot_part[1] * fit_part$se_b)
-
-cat(sprintf("  OLS estimate:       bLS = %.6f,  SE = %.6f,  t = %.4f\n",
-            fit_part$b, fit_part$se_b, fit_part$t))
-cat(sprintf("  Normal-theory CI:   [%.6f, %.6f]\n",
+cat("=== 3.2 Bootstrap: Partial-Trend OLS (breakpoint = 1975) ===\n")
+cat(sprintf("  Observed t-statistic Q        = %.4f\n", Q_part))
+cat(sprintf("  Bootstrap critical value c*   = %.4f\n", c.alpha.star_part))
+cat(sprintf("  Bootstrap p-value             = %.4f\n", p.value_part))
+cat(sprintf("  Bootstrap 95%% CI for beta:   [%.6f, %.6f]\n", ci.lo_part, ci.hi_part))
+cat(sprintf("  Normal-theory 95%% CI:        [%.6f, %.6f]\n",
             fit_part$b - qt(0.975, n - 2) * fit_part$se_b,
             fit_part$b + qt(0.975, n - 2) * fit_part$se_b))
-cat(sprintf("  Bootstrap CI (pct): [%.6f, %.6f]\n",
-            ci_boot_part_pct[1], ci_boot_part_pct[2]))
-cat(sprintf("  Bootstrap CI (pvt): [%.6f, %.6f]\n",
-            ci_boot_part_pivot[1], ci_boot_part_pivot[2]))
-cat(sprintf("  Normal p-value (1s): %.6f\n", 1 - pt(fit_part$t, df = n - 2)))
-cat(sprintf("  Bootstrap p-value:   %.6f\n", p_boot_part))
-cat(sprintf("  Decision (alpha=0.05): %s\n\n",
-            ifelse(p_boot_part < 0.05, "REJECT H0", "Do NOT reject H0")))
+cat(sprintf("  Decision: %s\n\n",
+            ifelse(Q_part > c.alpha.star_part, "REJECT H0", "Do NOT reject H0")))
 
-# ==============================================================================
-# 3.3 Bootstrap CI for the MEAN DIFFERENCE (late - early subsample)
-#     Split: years <= 1965 (early) vs years > 1965 (late)
-#     H0: mu_late - mu_early = 0  vs  H1: != 0  (two-sided)
-#
-# Approach: resample within each group independently, compute diff of means
-# ==============================================================================
+# 3.3 Figures — bootstrap distributions with observed Q and critical value
 
-cat("=== 3.3 Bootstrap: Mean Difference (split 1965) ===\n")
-
-split_yr <- 1965
-early    <- maastricht[years <= split_yr]
-late     <- maastricht[years  > split_yr]
-n_e      <- length(early)
-n_l      <- length(late)
-
-obs_diff <- sample_mean(late) - sample_mean(early)
-se_diff  <- sqrt(sample_var(late) / n_l + sample_var(early) / n_e)
-t_obs    <- obs_diff / se_diff
-
-diff_boot <- numeric(B)
-
-for (i in 1:B) {
-  early_b    <- early[sample.int(n_e, size = n_e, replace = TRUE)]
-  late_b     <- late [sample.int(n_l, size = n_l, replace = TRUE)]
-  diff_boot[i] <- sample_mean(late_b) - sample_mean(early_b)
-}
-
-# Percentile CI
-ci_diff_pct <- quantile(diff_boot, probs = c(0.025, 0.975))
-
-# Pivot CI (studentised): need bootstrap SE too
-diff_t_boot <- numeric(B)
-for (i in 1:B) {
-  early_b      <- early[sample.int(n_e, size = n_e, replace = TRUE)]
-  late_b       <- late [sample.int(n_l, size = n_l, replace = TRUE)]
-  d_b          <- sample_mean(late_b) - sample_mean(early_b)
-  se_b         <- sqrt(sample_var(late_b) / n_l + sample_var(early_b) / n_e)
-  diff_t_boot[i] <- (d_b - obs_diff) / se_b
-}
-q_diff       <- quantile(diff_t_boot, probs = c(0.025, 0.975))
-ci_diff_pvt  <- c(obs_diff - q_diff[2] * se_diff,
-                  obs_diff - q_diff[1] * se_diff)
-
-p_boot_diff  <- mean(abs(diff_t_boot) > abs(t_obs))
-
-cat(sprintf("  Observed diff (late - early): %.4f\n", obs_diff))
-cat(sprintf("  Normal-theory CI:   [%.4f, %.4f]\n",
-            obs_diff - qnorm(0.975) * se_diff,
-            obs_diff + qnorm(0.975) * se_diff))
-cat(sprintf("  Bootstrap CI (pct): [%.4f, %.4f]\n",
-            ci_diff_pct[1], ci_diff_pct[2]))
-cat(sprintf("  Bootstrap CI (pvt): [%.4f, %.4f]\n",
-            ci_diff_pvt[1], ci_diff_pvt[2]))
-cat(sprintf("  Normal p-value (2s): %.6f\n",
-            2 * (1 - pnorm(abs(t_obs)))))
-cat(sprintf("  Bootstrap p-value:   %.6f\n", p_boot_diff))
-cat(sprintf("  Decision (alpha=0.05): %s\n\n",
-            ifelse(p_boot_diff < 0.05, "REJECT H0 (means differ)", "Do NOT reject H0")))
-
-# ==============================================================================
-# 3.4 FIGURES
-# ==============================================================================
-
-# --- Figure A: Bootstrap distribution of beta (full-sample OLS) ---
+# --- Figure A: Full-sample ---
 par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
 
-hist(b_boot_full, breaks = 50, freq = FALSE,
-     col = adjustcolor("steelblue", 0.5), border = "white",
-     xlab = expression(hat(beta)^"*"),
-     main = "Bootstrap Distribution of OLS Slope\n(Full Sample, Maastricht)")
-abline(v = fit_full$b, col = "red", lwd = 2)
-abline(v = ci_boot_full_pct, col = "darkgreen", lwd = 1.5, lty = 2)
-legend("topright",
-       legend = c("OLS estimate", "95% CI (pct)"),
-       col = c("red", "darkgreen"), lwd = c(2, 1.5), lty = c(1, 2),
-       cex = 0.75, bty = "n")
+left.int  <- seq(-4, 3.5, 0.5)
+right.int <- seq(-3.5, 4, 0.5)
+mid.int   <- (left.int + right.int) / 2
+freq_full <- colSums(outer(Q.star_full, right.int, "<=") -
+                     outer(Q.star_full, left.int,  "<=")) / B
 
-# --- Figure B: Bootstrap distribution of beta (partial trend) ---
-hist(b_boot_part, breaks = 50, freq = FALSE,
-     col = adjustcolor("tomato", 0.5), border = "white",
-     xlab = expression(hat(beta)^"*"),
-     main = paste("Bootstrap Distribution of OLS Slope\n(Partial Trend from", breakpoint, ")"))
-abline(v = fit_part$b, col = "darkred", lwd = 2)
-abline(v = ci_boot_part_pct, col = "darkgreen", lwd = 1.5, lty = 2)
-legend("topright",
-       legend = c("OLS estimate", "95% CI (pct)"),
-       col = c("darkred", "darkgreen"), lwd = c(2, 1.5), lty = c(1, 2),
-       cex = 0.75, bty = "n")
+plot(mid.int, freq_full, type = "h", col = "blue", lend = "butt", lwd = 14,
+     xlab = "Q*", ylab = "Frequency", ylim = c(0, 0.25),
+     main = "Bootstrap Distribution\n(Full-Sample OLS)")
+lines(Q_full * c(1, 1), c(0, 0.25), lwd = 2, col = "red")
+mtext("Q", side = 3, line = 0, at = Q_full, col = "red")
+lines(c.alpha.star_full * c(1, 1), c(0, 0.25), lwd = 2, col = "darkgreen")
+mtext(expression(paste(c[alpha], "*")), side = 3, line = 0,
+      at = c.alpha.star_full, col = "darkgreen")
+
+# --- Figure B: Partial-trend ---
+freq_part <- colSums(outer(Q.star_part, right.int, "<=") -
+                     outer(Q.star_part, left.int,  "<=")) / B
+
+plot(mid.int, freq_part, type = "h", col = "blue", lend = "butt", lwd = 14,
+     xlab = "Q*", ylab = "Frequency", ylim = c(0, 0.25),
+     main = "Bootstrap Distribution\n(Partial-Trend OLS, 1975)")
+lines(Q_part * c(1, 1), c(0, 0.25), lwd = 2, col = "red")
+mtext("Q", side = 3, line = 0, at = Q_part, col = "red")
+lines(c.alpha.star_part * c(1, 1), c(0, 0.25), lwd = 2, col = "darkgreen")
+mtext(expression(paste(c[alpha], "*")), side = 3, line = 0,
+      at = c.alpha.star_part, col = "darkgreen")
 
 par(mfrow = c(1, 1))
-
-# --- Figure C: Bootstrap distribution of mean difference ---
-par(mar = c(4.5, 4.5, 3, 1))
-hist(diff_boot, breaks = 50, freq = FALSE,
-     col = adjustcolor("steelblue", 0.5), border = "white",
-     xlab = expression(bar(Y)[late] - bar(Y)[early]),
-     main = "Bootstrap Distribution of Mean Difference\n(Late minus Early, split 1965)")
-abline(v = obs_diff, col = "red", lwd = 2)
-abline(v = ci_diff_pct, col = "darkgreen", lwd = 1.5, lty = 2)
-abline(v = 0, col = "grey40", lwd = 1, lty = 3)
-legend("topleft",
-       legend = c("Observed diff", "95% CI (pct)", "Zero"),
-       col = c("red", "darkgreen", "grey40"), lwd = c(2, 1.5, 1),
-       lty = c(1, 2, 3), cex = 0.75, bty = "n")
-
