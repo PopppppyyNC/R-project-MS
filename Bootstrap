@@ -1,12 +1,11 @@
 # ==============================================================================
 # Part 3: Bootstrap
-# Assumes Parts 1 & 2 have been run. If not, uncomment the block below.
-# ==============================================================================
-# annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
-# years      <- annual$Date
-# maastricht <- annual$Maastricht
-# n          <- length(maastricht)
-# breakpoint <- 1975
+setwd("/Users/analozanogonzalez/Desktop")
+annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
+years      <- annual$Date
+maastricht <- annual$Maastricht
+n          <- length(maastricht)
+breakpoint <- 1975
 
 set.seed(2107)
 B <- 499   # number of bootstrap replications
@@ -123,7 +122,7 @@ left.int  <- seq(-4, 3.5, 0.5)
 right.int <- seq(-3.5, 4, 0.5)
 mid.int   <- (left.int + right.int) / 2
 freq_full <- colSums(outer(Q.star_full, right.int, "<=") -
-                     outer(Q.star_full, left.int,  "<=")) / B
+                       outer(Q.star_full, left.int,  "<=")) / B
 
 plot(mid.int, freq_full, type = "h", col = "blue", lend = "butt", lwd = 14,
      xlab = "Q*", ylab = "Frequency", ylim = c(0, 0.25),
@@ -136,7 +135,7 @@ mtext(expression(paste(c[alpha], "*")), side = 3, line = 0,
 
 # --- Figure B: Partial-trend ---
 freq_part <- colSums(outer(Q.star_part, right.int, "<=") -
-                     outer(Q.star_part, left.int,  "<=")) / B
+                       outer(Q.star_part, left.int,  "<=")) / B
 
 plot(mid.int, freq_part, type = "h", col = "blue", lend = "butt", lwd = 14,
      xlab = "Q*", ylab = "Frequency", ylim = c(0, 0.25),
