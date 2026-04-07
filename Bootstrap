@@ -1,7 +1,6 @@
-# ==============================================================================
-# Part 3: Bootstrap
-# Assumes Parts 1 & 2 have been run. If not, uncomment the block below.
-# ==============================================================================
+# Bootstrap - Part 3
+# (Parts 1 & 2 need to have been run first)
+
 setwd("/Users/analozanogonzalez/Desktop")
 annual     <- read.csv2("AnnualTemp.csv", header = TRUE)
 years      <- annual$Date
@@ -9,8 +8,8 @@ maastricht <- annual$Maastricht
 n          <- length(maastricht)
 breakpoint <- 1975
 
-set.seed(2107)
 B <- 499
+set.seed(2107)
 
 sample_mean <- function(x) sum(x) / length(x)
 sample_var  <- function(x) sum((x - sample_mean(x))^2) / (length(x) - 1)
@@ -29,9 +28,7 @@ ols_fit <- function(x, Y) {
   list(b = b, a = a, se_b = se_b, t = b / se_b)
 }
 
-# ==============================================================================
-# 3.1 Bootstrap: Full-Sample OLS
-# ==============================================================================
+# 3.1 full sample
 
 fit_full <- ols_fit(years, maastricht)
 Q_full   <- fit_full$t
@@ -66,9 +63,7 @@ cat(sprintf("  Normal-theory 95%% CI:        [%.6f, %.6f]\n",
 cat(sprintf("  Decision: %s\n\n",
             ifelse(Q_full > c.alpha.star_full, "REJECT H0", "Do NOT reject H0")))
 
-# ==============================================================================
-# 3.2 Bootstrap: Partial-Trend OLS (breakpoint = 1975)
-# ==============================================================================
+# 3.2 same but for partial trend from 1975
 
 x_part   <- ifelse(years >= breakpoint, years - breakpoint, 0)
 fit_part <- ols_fit(x_part, maastricht)
@@ -85,8 +80,7 @@ for (b in 1:B) {
 }
 
 c.alpha.star_part <- quantile(Q.star_part, probs = 1 - alpha)
-p.value_part      <- mean(Q.star_part > Q_part)
-
+p.value_part <- mean(Q.star_part > Q_part)
 q.lo_part  <- quantile(Q.star_part, probs = alpha / 2)
 q.hi_part  <- quantile(Q.star_part, probs = 1 - alpha / 2)
 ci.lo_part <- fit_part$b - q.hi_part * fit_part$se_b
@@ -103,30 +97,26 @@ cat(sprintf("  Normal-theory 95%% CI:        [%.6f, %.6f]\n",
 cat(sprintf("  Decision: %s\n\n",
             ifelse(Q_part > c.alpha.star_part, "REJECT H0", "Do NOT reject H0")))
 
-# ==============================================================================
-# 3.3 Figures — use histogram() so range adapts to the actual Q.star values
-# ==============================================================================
+# figures
 
 par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
 
-# --- Figure A: Full-sample ---
 hist(Q.star_full, breaks = 30, freq = FALSE,
      col = "blue", border = "white",
      xlab = "Q*", ylab = "Density",
      main = "Bootstrap Distribution\n(Full-Sample OLS)")
-abline(v = Q_full,           col = "red",       lwd = 2)
+abline(v = Q_full,            col = "red",       lwd = 2)
 abline(v = c.alpha.star_full, col = "darkgreen", lwd = 2)
-mtext("Q",                    side = 3, line = 0, at = Q_full,            col = "red")
-mtext(expression(c[alpha]*"*"), side = 3, line = 0, at = c.alpha.star_full, col = "darkgreen")
+mtext("Q",                      side = 3, line = 0, at = Q_full,             col = "red")
+mtext(expression(c[alpha]*"*"), side = 3, line = 0, at = c.alpha.star_full,  col = "darkgreen")
 
-# --- Figure B: Partial-trend ---
 hist(Q.star_part, breaks = 30, freq = FALSE,
      col = "blue", border = "white",
      xlab = "Q*", ylab = "Density",
      main = "Bootstrap Distribution\n(Partial-Trend OLS, 1975)")
 abline(v = Q_part,            col = "red",       lwd = 2)
-abline(v = c.alpha.star_part,  col = "darkgreen", lwd = 2)
-mtext("Q",                     side = 3, line = 0, at = Q_part,             col = "red")
+abline(v = c.alpha.star_part, col = "darkgreen", lwd = 2)
+mtext("Q",                      side = 3, line = 0, at = Q_part,             col = "red")
 mtext(expression(c[alpha]*"*"), side = 3, line = 0, at = c.alpha.star_part,  col = "darkgreen")
 
 par(mfrow = c(1, 1))
