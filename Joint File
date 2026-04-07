@@ -71,4 +71,522 @@ split_year <- 1965
 run_two_part_test <- function(x, name, split_yr) {
   idx_early <- which(years <= split_yr)
   idx_late  <- which(years > split_yr)
-  early
+  early <- x[idx_early]
+  late  <- x[idx_late]
+  
+  ci_e <- ci_mean(early)
+  ci_l <- ci_mean(late)
+  test <- two_sample_test(late, early)
+  
+  cat(sprintf("  --- %s ---\n", name))
+  cat(sprintf("  Early (%d-%d): Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+              min(years[idx_early]), split_yr,
+              ci_e$mean, ci_e$lower, ci_e$upper, ci_e$n))
+  cat(sprintf("  Late  (%d-%d): Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+              split_yr + 1, max(years),
+              ci_l$mean, ci_l$lower, ci_l$upper, ci_l$n))
+  cat(sprintf("  Diff = %.4f, |T| = %.4f, 95%% CI for diff: [%.4f, %.4f]\n\n",
+              test$diff, abs(test$t_stat), test$lower, test$upper))
+}
+
+run_two_part_test(maastricht, "Maastricht", split_year)
+run_two_part_test(de_bilt, "De Bilt", split_year)
+run_two_part_test(eelde, "Eelde", split_year)
+
+# (3) five-period split
+
+cuts5  <- c(1907, 1931, 1955, 1979, 2003, 2024)
+n_per  <- length(cuts5) - 1
+
+run_five_part <- function(x, name) {
+  cat(sprintf("  --- %s ---\n", name))
+  periods <- list()
+  pnames  <- character()
+  
+  for (i in 1:n_per) {
+    if (i < n_per) {
+      idx <- which(years >= cuts5[i] & years < cuts5[i + 1])
+    } else {
+      idx <- which(years >= cuts5[i] & years <= cuts5[i + 1])
+    }
+    periods[[i]] <- x[idx]
+    pnames[i] <- sprintf("%d-%d", cuts5[i], ifelse(i < n_per, cuts5[i + 1] - 1, cuts5[i + 1]))
+    
+    ci <- ci_mean(periods[[i]])
+    cat(sprintf("  %s: Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+                pnames[i], ci$mean, ci$lower, ci$upper, ci$n))
+  }
+  
+  cat("\n  Consecutive tests:\n")
+  for (i in 1:(n_per - 1)) {
+    test <- two_sample_test(periods[[i + 1]], periods[[i]])
+    cat(sprintf("  %s vs %s: Diff = %.4f, |T| = %.4f, 95%% CI: [%.4f, %.4f]\n",
+                pnames[i + 1], pnames[i], test$diff,
+                abs(test$t_stat), test$lower, test$upper))
+  }}
+
+run_five_part(maastricht, "Maastricht")
+run_five_part(de_bilt, "De Bilt")
+run_five_part(eelde, "Eelde")
+
+# (4) decade-based CIs
+
+decade_start <- seq(1907, 2017, by = 10)
+
+run_decade_ci <- function(x, name) {
+  cat(sprintf("  --- %s ---\n", name))
+  for (start in decade_start) {
+    end <- min(start + 9, 2024)
+    idx <- which(years >= start & years <= end)
+    ci  <- ci_mean(x[idx])
+    cat(sprintf("  %d-%d: Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+                start, end, ci$mean, ci$lower, ci$upper, ci$n))
+  }}
+
+run_decade_ci(maastricht, "Maastricht")
+run_decade_ci(de_bilt, "De Bilt")
+run_decade_ci(eelde, "Eelde")
+
+# (5) rolling 30-year window
+
+rolling_ci <- function(x, yrs, w) {
+  n_windows <- length(x) - w + 1
+  mid   <- numeric(n_windows)
+  means <- numeric(n_windows)
+  lo    <- numeric(n_windows)
+  hi    <- numeric(n_windows)
+  for (i in 1:n_windows) {
+    xi       <- x[i:(i + w - 1)]
+    ci       <- ci_mean(xi)
+    mid[i]   <- yrs[i] + (w - 1) / 2
+    means[i] <- ci$mean
+    lo[i]    <- ci$lower
+    hi[i]    <- ci$upper
+  }
+  data.frame(mid = mid, mean = means, lower = lo, upper = hi)
+}
+
+roll_maa <- rolling_ci(maastricht, years, 30)
+roll_db  <- rolling_ci(de_bilt, years, 30)
+roll_ee  <- rolling_ci(eelde, years, 30)
+
+cat("  Maastricht — Selected 30-year windows:\n")
+print_idx <- round(seq(1, nrow(roll_maa), length.out = 6))
+for (i in print_idx) {
+  start_yr <- years[i]
+  end_yr   <- years[i + 30 - 1]
+  cat(sprintf("  %d-%d: Mean = %.4f, 95%% CI: [%.4f, %.4f]\n",
+              start_yr, end_yr, roll_maa$mean[i], roll_maa$lower[i], roll_maa$upper[i]))
+}
+
+# figures
+
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 2, 1))
+plot(years, maastricht, type = "l", col = "red", lwd = 1.5,
+     ylim = c(7, 13), xlab = "Year", ylab = "Temperature (°C)",
+     main = "Annual Mean Temperatures (1907-2024)")
+lines(years, de_bilt, col = "blue", lwd = 1.5)
+lines(years, eelde, col = "darkgreen", lwd = 1.5)
+abline(h = sample_mean(maastricht), col = "red", lty = 2)
+abline(h = sample_mean(de_bilt), col = "blue", lty = 2)
+abline(h = sample_mean(eelde), col = "darkgreen", lty = 2)
+legend("topleft",
+       legend = c("Maastricht", "De Bilt", "Eelde"),
+       col = c("red", "blue", "darkgreen"),
+       lwd = 1.5, cex = 0.8, bty = "n")
+
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 2, 1))
+plot(NULL, xlim = range(years), ylim = c(8, 12),
+     xlab = "Midpoint of Decade", ylab = "Temperature (°C)",
+     main = "Decade Means with 95% CIs (Maastricht)")
+lines(years, maastricht, col = adjustcolor("red", 0.15))
+for (i in seq_along(decade_start)) {
+  start <- decade_start[i]
+  end   <- min(start + 9, 2024)
+  idx   <- which(years >= start & years <= end)
+  ci    <- ci_mean(maastricht[idx])
+  mid   <- (start + end) / 2
+  points(mid, ci$mean, pch = 19, col = "red", cex = 1.3)
+  arrows(mid, ci$lower, mid, ci$upper,
+         angle = 90, code = 3, length = 0.06, col = "red", lwd = 2)
+}
+abline(h = sample_mean(maastricht), col = "gray50", lty = 3)
+legend("topleft", c("Decade mean +/- 95% CI", "Overall mean"),
+       col = c("red", "gray50"), pch = c(19, NA), lty = c(NA, 3),
+       lwd = c(2, 1), cex = 0.8, bty = "n")
+
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 2, 1))
+plot(NULL,
+     xlim = range(years),
+     ylim = c(8, 12),
+     xlab = "Midpoint of 30-Year Window",
+     ylab = "Temperature (°C)",
+     main = "Rolling 30-Year Mean with 95% CI (Maastricht)")
+lines(years, maastricht, col = adjustcolor("red", 0.15))
+polygon(c(roll_maa$mid, rev(roll_maa$mid)),
+        c(roll_maa$lower, rev(roll_maa$upper)),
+        col = adjustcolor("red", 0.15), border = NA)
+lines(roll_maa$mid, roll_maa$mean, col = "red", lwd = 2)
+abline(h = sample_mean(maastricht), col = "gray50", lty = 3)
+legend("topleft",
+       legend = c("30-year mean", "95% CI band", "Overall mean"),
+       col = c("red", adjustcolor("red", 0.3), "gray50"),
+       lwd = c(2, 8, 1), lty = c(1, 1, 3),
+       cex = 0.8, bty = "n")
+
+library(ggplot2)
+
+dat_annual <- read.csv2("AnnualTemp.csv")
+
+years      <- dat_annual$Date
+maastricht <- dat_annual$Maastricht
+de_bilt    <- dat_annual$De.Bilt
+eelde      <- dat_annual$Eelde
+n          <- length(maastricht)
+
+sample_mean <- function(x) { sum(x) / length(x) }
+sample_var  <- function(x) { sum((x - sample_mean(x))^2) / (length(x) - 1) }
+
+x    <- years
+Y    <- maastricht
+xbar <- sample_mean(x)
+Ybar <- sample_mean(Y)
+
+Sxx <- sum((x - xbar)^2)
+SxY <- sum((x - xbar) * (Y - Ybar))
+
+bLS <- SxY / Sxx
+aLS <- Ybar - bLS * xbar
+
+eps_hat <- Y - aLS - bLS * x
+RSS     <- sum(eps_hat^2)
+S2      <- RSS / (n - 2)
+
+cat("=== OLS Estimation (Maastricht) ===\n")
+cat("n    =", n, "\n")
+cat("xbar =", xbar, "\n")
+cat("Ybar =", Ybar, "\n")
+cat("Sxx  =", Sxx, "\n")
+cat("SxY  =", SxY, "\n")
+cat("bLS  =", bLS, "\n")
+cat("aLS  =", aLS, "\n")
+cat("RSS  =", RSS, "\n")
+cat("S^2  =", S2, "\n")
+cat("S    =", sqrt(S2), "\n")
+
+cat("\nInterpretation:\n")
+cat("  Estimated trend:", bLS, "degrees C per year\n")
+cat("  i.e.", bLS * 100, "degrees C per century\n")
+cat("  Total estimated warming (", years[1], "-", years[n], "):",
+    bLS * (years[n] - years[1]), "degrees C\n")
+
+se_bLS <- sqrt(S2 / Sxx)
+se_aLS <- sqrt(S2 * sum(x^2) / (n * Sxx))
+
+alpha_level <- 0.05
+t_cv        <- qt(1 - alpha_level / 2, df = n - 2)
+
+ci_beta  <- c(bLS - t_cv * se_bLS, bLS + t_cv * se_bLS)
+ci_alpha <- c(aLS - t_cv * se_aLS, aLS + t_cv * se_aLS)
+
+cat("\n=== Estimation Uncertainty ===\n")
+cat("SE(bLS) =", se_bLS, "\n")
+cat("SE(aLS) =", se_aLS, "\n")
+cat("t_{n-2, alpha/2} =", t_cv, "\n")
+cat("95% CI for beta:  [", ci_beta[1], ",", ci_beta[2], "]\n")
+cat("95% CI for alpha: [", ci_alpha[1], ",", ci_alpha[2], "]\n")
+cat("  i.e. between", ci_beta[1] * 100, "and", ci_beta[2] * 100,
+    "degrees C per century\n")
+
+t_stat  <- bLS / se_bLS
+t_cv_1s <- qt(1 - alpha_level, df = n - 2)
+p_1s    <- 1 - pt(t_stat, df = n - 2)
+p_2s    <- 2 * (1 - pt(abs(t_stat), df = n - 2))
+
+cat("\n=== Hypothesis Test: H0: beta <= 0  vs  H1: beta > 0 ===\n")
+cat("T             =", t_stat, "\n")
+cat("Critical value=", t_cv_1s, "\n")
+cat("p (one-sided) =", p_1s, "\n")
+cat("p (two-sided) =", p_2s, "\n")
+if (t_stat > t_cv_1s) {
+  cat("Decision: REJECT H0 at alpha = 0.05\n")
+} else {
+  cat("Decision: Do NOT reject H0 at alpha = 0.05\n")
+}
+
+run_ols <- function(x, Y, label) {
+  n_r  <- length(Y)
+  xbar <- sample_mean(x)
+  Ybar <- sample_mean(Y)
+  Sxx  <- sum((x - xbar)^2)
+  SxY  <- sum((x - xbar) * (Y - Ybar))
+  bLS  <- SxY / Sxx
+  aLS  <- Ybar - bLS * xbar
+  eps  <- Y - aLS - bLS * x
+  S2   <- sum(eps^2) / (n_r - 2)
+  se_b <- sqrt(S2 / Sxx)
+  t_b  <- bLS / se_b
+  p_b  <- 1 - pt(t_b, df = n_r - 2)
+  cat(sprintf("  %s: bLS = %.6f, SE = %.6f, t = %.4f, p (1s) = %s\n",
+              label, bLS, se_b, t_b, format(p_b, scientific = TRUE, digits = 4)))
+  list(bLS = bLS, se = se_b, t = t_b, p = p_b, S2 = S2, eps = eps)
+}
+
+cat("\n=== Robustness ===\n")
+run_ols(years, maastricht, "Maastricht")
+run_ols(years, de_bilt,    "De Bilt")
+run_ols(years, eelde,      "Eelde")
+
+fitted_vals <- aLS + bLS * x
+
+ggplot(data.frame(Year = years, Temp = Y, Fitted = fitted_vals), aes(x = Year)) +
+  geom_line(aes(y = Temp), colour = "steelblue", linewidth = 0.8) +
+  geom_line(aes(y = Fitted), colour = "red", linewidth = 1) +
+  labs(title = "Maastricht: Annual Temperature with Estimated Linear Trend",
+       x = "Year", y = expression(degree * C)) +
+  theme_minimal()
+
+ggplot(data.frame(r = eps_hat), aes(x = r)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20,
+                 fill = "steelblue", colour = "white", alpha = 0.7) +
+  stat_function(fun = dnorm, args = list(mean = 0, sd = sqrt(S2)),
+                colour = "red", linewidth = 1) +
+  labs(title = "Histogram of Residuals with N(0, S^2) Overlay",
+       x = "Residual", y = "Density") +
+  theme_minimal()
+
+ggplot(data.frame(r = eps_hat), aes(sample = r)) +
+  stat_qq() + stat_qq_line(colour = "red") +
+  labs(title = "Normal Q-Q Plot of Residuals") +
+  theme_minimal()
+
+ggplot(data.frame(Year = years, r = eps_hat), aes(x = Year, y = r)) +
+  geom_line(colour = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "red") +
+  labs(title = "Residuals over Time", x = "Year", y = "Residual") +
+  theme_minimal()
+
+max_lag  <- 10
+gamma_0  <- sum(eps_hat^2) / n
+rho_hat  <- rep(0, max_lag)
+for (h in 1:max_lag) {
+  rho_hat[h] <- sum(eps_hat[1:(n - h)] * eps_hat[(1 + h):n]) / (n * gamma_0)
+}
+band <- 1.96 / sqrt(n)
+
+cat("\n=== Sample Autocorrelations of Residuals ===\n")
+cat("95% band under independence: +/-", band, "\n")
+for (h in 1:max_lag) {
+  flag <- ifelse(abs(rho_hat[h]) > band, " ***", "")
+  cat(sprintf("  rho_hat(%2d) = %8.4f%s\n", h, rho_hat[h], flag))
+}
+
+ggplot(data.frame(Lag = 1:max_lag, ACF = rho_hat), aes(x = Lag, y = ACF)) +
+  geom_col(fill = "steelblue", width = 0.5) +
+  geom_hline(yintercept = c(-band, band), linetype = "dashed", colour = "red") +
+  geom_hline(yintercept = 0) +
+  labs(title = "Sample Autocorrelation of Residuals",
+       x = "Lag", y = expression(hat(rho)(h))) +
+  scale_x_continuous(breaks = 1:max_lag) +
+  theme_minimal()
+
+
+# Q2 - partial trend
+
+breakpoint <- 1975
+
+# x_i = 0 if year < 1975, x_i = year - 1975 otherwise
+
+x_part     <- ifelse(years >= breakpoint, years - breakpoint, 0)
+xbar_part  <- sample_mean(x_part)
+
+Sxx_part <- sum((x_part - xbar_part)^2)
+SxY_part <- sum((x_part - xbar_part) * (Y - Ybar))
+
+bLS_part <- SxY_part / Sxx_part
+aLS_part <- Ybar - bLS_part * xbar_part
+
+eps_part <- Y - aLS_part - bLS_part * x_part
+RSS_part <- sum(eps_part^2)
+S2_part  <- RSS_part / (n - 2)
+
+cat("=== Partial Trend: Breakpoint at", breakpoint, "===\n")
+cat("n    =", n, "\n")
+cat("aLS  =", aLS_part, "\n")
+cat("bLS  =", bLS_part, "\n")
+cat("RSS  =", RSS_part, "\n")
+cat("S^2  =", S2_part, "\n")
+cat("S    =", sqrt(S2_part), "\n")
+
+cat("\nInterpretation:\n")
+cat("  Baseline temperature (pre-", breakpoint, "): alpha_hat =", aLS_part, "degrees C\n")
+cat("  Post-", breakpoint, "trend:", bLS_part, "degrees C per year\n")
+cat("  i.e.", bLS_part * 100, "degrees C per century\n")
+cat("  Warming", breakpoint, "-", years[n], ":",
+    bLS_part * (years[n] - breakpoint), "degrees C\n")
+
+se_bLS_part <- sqrt(S2_part / Sxx_part)
+se_aLS_part <- sqrt(S2_part * sum(x_part^2) / (n * Sxx_part))
+
+ci_beta_part  <- c(bLS_part - t_cv * se_bLS_part, bLS_part + t_cv * se_bLS_part)
+ci_alpha_part <- c(aLS_part - t_cv * se_aLS_part, aLS_part + t_cv * se_aLS_part)
+
+cat("\n=== Estimation Uncertainty ===\n")
+cat("SE(bLS) =", se_bLS_part, "\n")
+cat("SE(aLS) =", se_aLS_part, "\n")
+cat("95% CI for beta:  [", ci_beta_part[1], ",", ci_beta_part[2], "]\n")
+cat("95% CI for alpha: [", ci_alpha_part[1], ",", ci_alpha_part[2], "]\n")
+cat("  i.e. between", ci_beta_part[1] * 100, "and",
+    ci_beta_part[2] * 100, "degrees C per century\n")
+
+t_stat_part <- bLS_part / se_bLS_part
+p_1s_part   <- 1 - pt(t_stat_part, df = n - 2)
+
+cat("\n=== Hypothesis Test: H0: beta <= 0  vs  H1: beta > 0 ===\n")
+cat("T             =", t_stat_part, "\n")
+cat("Critical value=", t_cv_1s, "\n")
+cat("p (one-sided) =", p_1s_part, "\n")
+if (t_stat_part > t_cv_1s) {
+  cat("Decision: REJECT H0 at alpha = 0.05\n")
+} else {
+  cat("Decision: Do NOT reject H0 at alpha = 0.05\n")
+}
+
+cat("\n=== Comparison: Full Sample vs Partial Trend ===\n")
+cat(sprintf("%-20s %15s %15s\n", "", "Full Sample", paste("Partial (", breakpoint, ")")))
+cat(sprintf("%-20s %15.6f %15.6f\n", "beta_hat",    bLS,       bLS_part))
+cat(sprintf("%-20s %15.6f %15.6f\n", "SE(beta_hat)", se_bLS,   se_bLS_part))
+cat(sprintf("%-20s %15.4f %15.4f\n", "t-statistic",  t_stat,   t_stat_part))
+cat(sprintf("%-20s %15.6f %15.6f\n", "95% CI lower", ci_beta[1], ci_beta_part[1]))
+cat(sprintf("%-20s %15.6f %15.6f\n", "95% CI upper", ci_beta[2], ci_beta_part[2]))
+cat(sprintf("%-20s %15.6f %15.6f\n", "S^2",          S2,        S2_part))
+cat(sprintf("%-20s %15.4f %15.4f\n", "alpha_hat",    aLS,       aLS_part))
+
+fitted_part <- aLS_part + bLS_part * x_part
+
+df_compare <- data.frame(Year = years, Temp = Y,
+                         Full = fitted_vals, Partial = fitted_part)
+
+ggplot(df_compare, aes(x = Year)) +
+  geom_line(aes(y = Temp), colour = "steelblue", linewidth = 0.8) +
+  geom_line(aes(y = Full), colour = "red", linewidth = 0.8, linetype = "dashed") +
+  geom_line(aes(y = Partial), colour = "darkred", linewidth = 1) +
+  geom_vline(xintercept = breakpoint, linetype = "dotted", colour = "grey40") +
+  labs(title = paste("Maastricht: Full-Sample vs Partial Trend (from", breakpoint, ")"),
+       x = "Year", y = expression(degree * C)) +
+  theme_minimal()
+
+# sensitivity to breakpoint choice
+
+bp_values <- c(1960, 1965, 1970, 1975, 1980, 1985, 1990)
+
+bp_results <- data.frame(Breakpoint = integer(), Beta = numeric(),
+                         SE = numeric(), t_stat = numeric(),
+                         p_value = numeric(), RSS = numeric(),
+                         alpha_hat = numeric())
+
+for (bp in bp_values) {
+  x_bp     <- ifelse(years >= bp, years - bp, 0)
+  xbar_bp  <- sample_mean(x_bp)
+  Sxx_bp   <- sum((x_bp - xbar_bp)^2)
+  SxY_bp   <- sum((x_bp - xbar_bp) * (Y - Ybar))
+  bLS_bp   <- SxY_bp / Sxx_bp
+  aLS_bp   <- Ybar - bLS_bp * xbar_bp
+  RSS_bp   <- sum((Y - aLS_bp - bLS_bp * x_bp)^2)
+  S2_bp    <- RSS_bp / (n - 2)
+  se_bp    <- sqrt(S2_bp / Sxx_bp)
+  t_bp     <- bLS_bp / se_bp
+  p_bp     <- 1 - pt(t_bp, df = n - 2)
+  
+  bp_results <- rbind(bp_results,
+                      data.frame(Breakpoint = bp, Beta = bLS_bp, SE = se_bp,
+                                 t_stat = t_bp, p_value = p_bp, RSS = RSS_bp,
+                                 alpha_hat = aLS_bp))
+}
+
+bp_results$CI_lower <- bp_results$Beta - t_cv * bp_results$SE
+bp_results$CI_upper <- bp_results$Beta + t_cv * bp_results$SE
+
+cat("\n=== Sensitivity Across Breakpoints ===\n")
+cat(sprintf("%-5s %10s %10s %10s %10s %10s %10s\n",
+            "BP", "beta_hat", "SE", "t", "p(1s)", "RSS", "alpha_hat"))
+for (i in 1:nrow(bp_results)) {
+  r <- bp_results[i, ]
+  cat(sprintf("%-5d %10.6f %10.6f %10.4f %10.1e %10.4f %10.4f\n",
+              r$Breakpoint, r$Beta, r$SE, r$t_stat, r$p_value, r$RSS, r$alpha_hat))
+}
+
+ggplot(bp_results, aes(x = Breakpoint, y = Beta)) +
+  geom_point(size = 3, colour = "steelblue") +
+  geom_errorbar(aes(ymin = CI_lower, ymax = CI_upper),
+                width = 1.5, colour = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "red") +
+  labs(title = "Estimated Post-Breakpoint Slope Across Different Breakpoints",
+       x = "Breakpoint Year", y = expression(hat(beta))) +
+  theme_minimal()
+
+# robustness across stations
+
+run_partial_ols <- function(years, Y, bp, label) {
+  n_r      <- length(Y)
+  x_bp     <- ifelse(years >= bp, years - bp, 0)
+  Ybar_r   <- sample_mean(Y)
+  xbar_bp  <- sample_mean(x_bp)
+  Sxx_bp   <- sum((x_bp - xbar_bp)^2)
+  SxY_bp   <- sum((x_bp - xbar_bp) * (Y - Ybar_r))
+  bLS_bp   <- SxY_bp / Sxx_bp
+  aLS_bp   <- Ybar_r - bLS_bp * xbar_bp
+  eps_bp   <- Y - aLS_bp - bLS_bp * x_bp
+  S2_bp    <- sum(eps_bp^2) / (n_r - 2)
+  se_bp    <- sqrt(S2_bp / Sxx_bp)
+  t_bp     <- bLS_bp / se_bp
+  p_bp     <- 1 - pt(t_bp, df = n_r - 2)
+  cat(sprintf("  %s: bLS = %.6f, SE = %.6f, t = %.4f, p(1s) = %s, alpha = %.4f\n",
+              label, bLS_bp, se_bp, t_bp,
+              format(p_bp, scientific = TRUE, digits = 4), aLS_bp))
+}
+
+cat("\n=== Robustness: Partial Trend from", breakpoint, "===\n")
+run_partial_ols(years, maastricht, breakpoint, "Maastricht")
+run_partial_ols(years, de_bilt,    breakpoint, "De Bilt")
+run_partial_ols(years, eelde,      breakpoint, "Eelde")
+
+# diagnostics for partial trend model
+
+ggplot(data.frame(Year = years, r = eps_part), aes(x = Year, y = r)) +
+  geom_line(colour = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", colour = "red") +
+  geom_vline(xintercept = breakpoint, linetype = "dotted", colour = "grey40") +
+  labs(title = paste("Residuals over Time (Partial Trend from", breakpoint, ")"),
+       x = "Year", y = "Residual") +
+  theme_minimal()
+
+ggplot(data.frame(r = eps_part), aes(sample = r)) +
+  stat_qq() + stat_qq_line(colour = "red") +
+  labs(title = paste("Q-Q Plot of Residuals (Partial Trend from", breakpoint, ")")) +
+  theme_minimal()
+
+gamma_0_part <- sum(eps_part^2) / n
+rho_part     <- rep(0, max_lag)
+for (h in 1:max_lag) {
+  rho_part[h] <- sum(eps_part[1:(n - h)] * eps_part[(1 + h):n]) / (n * gamma_0_part)
+}
+
+cat("\n=== Autocorrelations: Partial-Trend Residuals ===\n")
+cat("95% band: +/-", band, "\n")
+cat(sprintf("\n%-12s %12s %12s\n", "", "Full model", "Partial model"))
+for (h in 1:max_lag) {
+  flag_f <- ifelse(abs(rho_hat[h]) > band, " ***", "")
+  flag_p <- ifelse(abs(rho_part[h]) > band, " ***", "")
+  cat(sprintf("  rho_hat(%2d) %10.4f%-4s %10.4f%-4s\n",
+              h, rho_hat[h], flag_f, rho_part[h], flag_p))
+}
+
+ggplot(data.frame(Lag = 1:max_lag, ACF = rho_part), aes(x = Lag, y = ACF)) +
+  geom_col(fill = "steelblue", width = 0.5) +
+  geom_hline(yintercept = c(-band, band), linetype = "dashed", colour = "red") +
+  geom_hline(yintercept = 0) +
+  labs(title = paste("Sample Autocorrelation of Residuals (Partial Trend from", breakpoint, ")"),
+       x = "Lag", y = expression(hat(rho)(h))) +
+  scale_x_continuous(breaks = 1:max_lag) +
+  theme_minimal()
