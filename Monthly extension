@@ -1,0 +1,234 @@
+library(readxl)
+monthly_smooth <- read_excel("TempDataNL.xlsx", sheet = "MonthlySmoothed")
+monthly_smooth <- as.data.frame(monthly_smooth)
+colnames(monthly_smooth) <- c("Date", "DeBilt", "Eelde", "Maastricht")
+
+n_m     <- nrow(monthly_smooth)
+dates_m <- monthly_smooth$Date
+
+year_m  <- floor(dates_m / 100)
+month_m <- dates_m - year_m * 100
+time_m  <- year_m + (month_m - 0.5) / 12
+Y_m     <- monthly_smooth$Maastricht
+
+year_m  <- floor(dates_m / 100)
+month_m <- dates_m - year_m * 100
+time_m  <- year_m + (month_m - 0.5) / 12
+
+
+breakpoint <- 1975
+
+x_m <- ifelse(time_m >= breakpoint, time_m - breakpoint, 0)
+
+xbar_m <- sum(x_m) / n_m
+Ybar_m <- sum(Y_m) / n_m
+
+Sxx_m <- sum((x_m - xbar_m)^2)
+SxY_m <- sum((x_m - xbar_m) * (Y_m - Ybar_m))
+
+bLS_m <- SxY_m / Sxx_m
+aLS_m <- Ybar_m - bLS_m * xbar_m
+
+eps_m  <- Y_m - aLS_m - bLS_m * x_m
+RSS_m  <- sum(eps_m^2)
+S2_m   <- RSS_m / (n_m - 2)
+
+se_bLS_m <- sqrt(S2_m / Sxx_m)
+se_aLS_m <- sqrt(S2_m * sum(x_m^2) / (n_m * Sxx_m))
+
+t_cv_m   <- qt(0.975, df = n_m - 2)
+t_stat_m <- bLS_m / se_bLS_m
+p_1s_m   <- 1 - pt(t_stat_m, df = n_m - 2)
+
+ci_beta_m  <- c(bLS_m - t_cv_m * se_bLS_m, bLS_m + t_cv_m * se_bLS_m)
+ci_alpha_m <- c(aLS_m - t_cv_m * se_aLS_m, aLS_m + t_cv_m * se_aLS_m)
+
+max_lag_m  <- 15
+gamma_0_m  <- sum(eps_m^2) / n_m
+rho_m      <- rep(0, max_lag_m)
+for (h in 1:max_lag_m) {
+  rho_m[h] <- sum(eps_m[1:(n_m - h)] * eps_m[(1 + h):n_m]) / (n_m * gamma_0_m)
+}
+band_m <- 1.96 / sqrt(n_m)
+
+fitted_m <- aLS_m + bLS_m * x_m
+
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 3, 1))
+plot(time_m, Y_m, type = "l", col = "blue", lwd = 0.6,
+     xlab = "Year", ylab = expression(degree * C),
+     main = "Smoothed Monthly Temperatures with Partial Trend (1975)")
+lines(time_m, fitted_m, col = "red", lwd = 2)
+abline(v = breakpoint, lty = 3, col = "grey")
+
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 3, 1))
+plot(time_m, eps_m, type = "l", col = "blue", lwd = 0.6,
+     xlab = "Year", ylab = "Residual",
+     main = "Residuals over Time (Smoothed Monthly, Partial Trend 1975)")
+abline(h = 0, lty = 2, col = "red")
+abline(v = breakpoint, lty = 3, col = "grey")
+
+par(mfrow = c(1, 1), mar = c(4.5, 4.5, 3, 1))
+barplot(rho_m, names.arg = 1:max_lag_m, col = "blue", border = "white",
+        ylim = c(-0.2, 1.0),
+        xlab = "Lag", ylab = expression(hat(rho)(h)),
+        main = "Autocorrelation of Residuals (Smoothed Monthly)")
+abline(h = c(-band_m, band_m), lty = 2, col = "red")
+abline(h = 0)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+library(readxl)
+monthly_raw <- read_excel("TempDataNL.xlsx", sheet = "Monthly")
+monthly_raw <- as.data.frame(monthly_raw)
+colnames(monthly_raw) <- c("Date", "DeBilt", "Eelde", "Maastricht")
+
+dates_raw <- monthly_raw$Date
+year_raw  <- floor(dates_raw / 100)
+month_raw <- dates_raw - year_raw * 100
+
+jan_idx <- which(month_raw == 1)
+jul_idx <- which(month_raw == 7)
+
+Y_jan <- monthly_raw$Maastricht[jan_idx]
+x_jan <- year_raw[jan_idx]
+n_jan <- length(Y_jan)
+
+Y_jul <- monthly_raw$Maastricht[jul_idx]
+x_jul <- year_raw[jul_idx]
+n_jul <- length(Y_jul)
+
+
+ols_season <- function(x, Y, label) {
+  n_r  <- length(Y)
+  xbar <- sum(x) / n_r
+  Ybar <- sum(Y) / n_r
+  Sxx  <- sum((x - xbar)^2)
+  SxY  <- sum((x - xbar) * (Y - Ybar))
+  b    <- SxY / Sxx
+  a    <- Ybar - b * xbar
+  eps  <- Y - a - b * x
+  S2   <- sum(eps^2) / (n_r - 2)
+  se_b <- sqrt(S2 / Sxx)
+  t_b  <- b / se_b
+  p_b  <- 1 - pt(t_b, df = n_r - 2)
+  t_cv <- qt(0.975, df = n_r - 2)
+  ci   <- c(b - t_cv * se_b, b + t_cv * se_b)
+
+  list(b = b, se = se_b, t = t_b, p = p_b, S2 = S2, ci = ci,
+       a = a, eps = eps, n = n_r)
+}
+
+res_jan <- ols_season(x_jan, Y_jan, "January — Maastricht")
+res_jul <- ols_season(x_jul, Y_jul, "July — Maastricht")
+
+
+ols_season_partial <- function(x, Y, bp, label) {
+  n_r  <- length(Y)
+  xp   <- ifelse(x >= bp, x - bp, 0)
+  xbar <- sum(xp) / n_r
+  Ybar <- sum(Y) / n_r
+  Sxx  <- sum((xp - xbar)^2)
+  SxY  <- sum((xp - xbar) * (Y - Ybar))
+  b    <- SxY / Sxx
+  a    <- Ybar - b * xbar
+  eps  <- Y - a - b * xp
+  S2   <- sum(eps^2) / (n_r - 2)
+  se_b <- sqrt(S2 / Sxx)
+  t_b  <- b / se_b
+  p_b  <- 1 - pt(t_b, df = n_r - 2)
+  t_cv <- qt(0.975, df = n_r - 2)
+  ci   <- c(b - t_cv * se_b, b + t_cv * se_b)
+  
+  list(b = b, se = se_b, t = t_b, p = p_b, S2 = S2, ci = ci,
+       a = a, eps = eps, n = n_r, xp = xp)
+}
+
+breakpoint <- 1975
+res_jan_p <- ols_season_partial(x_jan, Y_jan, breakpoint, "January — Maastricht")
+res_jul_p <- ols_season_partial(x_jul, Y_jul, breakpoint, "July — Maastricht")
+
+Y_jan_db <- monthly_raw$DeBilt[jan_idx]
+Y_jan_ee <- monthly_raw$Eelde[jan_idx]
+ols_season_partial(x_jan, Y_jan,    breakpoint, "January — Maastricht")
+ols_season_partial(x_jan, Y_jan_db, breakpoint, "January — De Bilt")
+ols_season_partial(x_jan, Y_jan_ee, breakpoint, "January — Eelde")
+
+Y_jul_db <- monthly_raw$DeBilt[jul_idx]
+Y_jul_ee <- monthly_raw$Eelde[jul_idx]
+ols_season_partial(x_jul, Y_jul,    breakpoint, "July — Maastricht")
+ols_season_partial(x_jul, Y_jul_db, breakpoint, "July — De Bilt")
+ols_season_partial(x_jul, Y_jul_ee, breakpoint, "July — Eelde")
+
+
+# Figure: January and July raw data with partial trend
+fitted_jan <- res_jan_p$a + res_jan_p$b * res_jan_p$xp
+fitted_jul <- res_jul_p$a + res_jul_p$b * res_jul_p$xp
+
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
+
+plot(x_jan, Y_jan, type = "l", col = "blue", lwd = 0.8,
+     xlab = "Year", ylab = expression(degree * C),
+     main = "January Temperatures (Maastricht)")
+lines(x_jan, fitted_jan, col = "red", lwd = 2)
+abline(v = breakpoint, lty = 3, col = "grey40")
+
+plot(x_jul, Y_jul, type = "l", col = "red", lwd = 0.8,
+     xlab = "Year", ylab = expression(degree * C),
+     main = "July Temperatures (Maastricht)")
+lines(x_jul, fitted_jul, col = "darkred", lwd = 2)
+abline(v = breakpoint, lty = 3, col = "grey40")
+
+par(mfrow = c(1, 1))
+
+# Figure: Autocorrelations for January and July residuals
+max_lag_s <- 10
+band_s    <- 1.96 / sqrt(n_jan)
+
+rho_jan <- rep(0, max_lag_s)
+rho_jul <- rep(0, max_lag_s)
+g0_jan  <- sum(res_jan_p$eps^2) / n_jan
+g0_jul  <- sum(res_jul_p$eps^2) / n_jul
+
+for (h in 1:max_lag_s) {
+  rho_jan[h] <- sum(res_jan_p$eps[1:(n_jan - h)] * res_jan_p$eps[(1 + h):n_jan]) / (n_jan * g0_jan)
+  rho_jul[h] <- sum(res_jul_p$eps[1:(n_jul - h)] * res_jul_p$eps[(1 + h):n_jul]) / (n_jul * g0_jul)
+}
+
+par(mfrow = c(1, 2), mar = c(4.5, 4.5, 3, 1))
+
+barplot(rho_jan, names.arg = 1:max_lag_s, col = "blue", border = "white",
+        ylim = c(-0.3, 0.4),
+        xlab = "Lag", ylab = expression(hat(rho)(h)),
+        main = "ACF of January Residuals")
+abline(h = c(-band_s, band_s), lty = 2, col = "red")
+abline(h = 0)
+
+barplot(rho_jul, names.arg = 1:max_lag_s, col = "red", border = "white",
+        ylim = c(-0.3, 0.4),
+        xlab = "Lag", ylab = expression(hat(rho)(h)),
+        main = "ACF of July Residuals")
+abline(h = c(-band_s, band_s), lty = 2, col = "red")
+abline(h = 0)
+
+par(mfrow = c(1, 1))
