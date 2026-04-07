@@ -1,0 +1,74 @@
+# Part 1: Comparison of Average Temperatures in Different Parts of the Sample
+
+annual <- read.csv2("C:/Users/eva22/OneDrive/Documenten/Eva/MU/2-4/MS/The data/AnnualTemp.csv",
+                    header = TRUE)
+
+de_bilt    <- annual$De.Bilt
+eelde      <- annual$Eelde
+maastricht <- annual$Maastricht
+years      <- annual$Date
+n          <- length(maastricht)
+
+# helper functions
+
+sample_mean <- function(x) { sum(x) / length(x) }
+
+sample_var <- function(x) {
+  xbar <- sample_mean(x)
+  sum((x - xbar)^2) / (length(x) - 1)
+}
+
+sample_sd  <- function(x) { sqrt(sample_var(x)) }
+sample_se  <- function(x) { sample_sd(x) / sqrt(length(x)) }
+
+ci_mean <- function(x, alpha = 0.05) {
+  n_x    <- length(x)
+  xbar   <- sample_mean(x)
+  se     <- sample_se(x)
+  df     <- n_x - 1
+  t_crit <- qt(1 - alpha / 2, df)
+  lower  <- xbar - t_crit * se
+  upper  <- xbar + t_crit * se
+  list(mean = xbar, lower = lower, upper = upper, se = se,
+       df = df, t_crit = t_crit, n = n_x)
+}
+
+two_sample_test <- function(x1, x2, alpha = 0.05) {
+  n1 <- length(x1)
+  n2 <- length(x2)
+  m1 <- sample_mean(x1)
+  m2 <- sample_mean(x2)
+  v1 <- sample_var(x1)
+  v2 <- sample_var(x2)
+  
+  diff    <- m1 - m2
+  se_diff <- sqrt(v1 / n1 + v2 / n2)
+  t_stat  <- diff / se_diff
+  z_crit  <- qnorm(1 - alpha / 2)
+  lower   <- diff - z_crit * se_diff
+  upper   <- diff + z_crit * se_diff
+  
+  list(diff = diff, se = se_diff, t_stat = t_stat,
+       lower = lower, upper = upper)
+}
+
+# (1) overall CI for the mean
+
+for (loc_name in c("Maastricht", "De Bilt", "Eelde")) {
+  x  <- switch(loc_name,
+               "Maastricht" = maastricht,
+               "De Bilt"    = de_bilt,
+               "Eelde"      = eelde)
+  ci <- ci_mean(x)
+  cat(sprintf("  %s: Mean = %.4f, 95%% CI: [%.4f, %.4f] (n = %d)\n",
+              loc_name, ci$mean, ci$lower, ci$upper, ci$n))
+}
+
+# (2) two-part split
+
+split_year <- 1965
+
+run_two_part_test <- function(x, name, split_yr) {
+  idx_early <- which(years <= split_yr)
+  idx_late  <- which(years > split_yr)
+  early
